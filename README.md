@@ -88,6 +88,37 @@ $ dials-metal-find-spots --version
 dials-metal-find-spots 0.1.0 (Metal)
 ```
 
+What it prints is `dials.find_spots`' own summary, wording included, so that the
+two can be read the same way and compared line for line:
+
+```
+$ dials-metal-find-spots -j 4 -e series.expt series.nxs
+Experiments: 1 experiment, images 1 to 12, 1 panel of 256 x 384, identifier 1c0ffee0
+Series series: 12 images of 256 x 384, from series.nxs, 4 threads, on the CPU
+Grouping in three dimensions, 3 to 1000 pixels a spot, peak within 2.0 of the centroid
+Thresholded 12 of 12 images in 0.0 s (516.4 images/s), 0 never written, 0 failures
+Found 8928 signal pixels on 12 frames
+Extracted 48 spots
+Removed 0 spots with size < 3 pixels
+Removed 0 spots with size > 1000 pixels
+Calculated 48 spot centroids
+Calculated 48 spot intensities
+Filtered 48 of 48 spots by peak-centroid distance
+Wrote 48 reflections to strong.refl (0.1 MB, most of it shoeboxes)
+```
+
+-- which is the synthetic fixture from `tests/make_test_nxmx.py`, twelve frames
+with forty-eight reflections planted in them, so the numbers are small and every
+one of them is checkable. A real sweep says the same things with six digits in
+them.
+
+The centroids and the intensities are one pass here rather than two, so those
+counts are equal by construction; both lines are printed anyway, because a
+summary that reads differently from the familiar one is the thing this replaced.
+The peak-centroid line appears only when that filter is on, since "Filtered 48
+of 48" would otherwise read as a filter that passed everything rather than one
+that was switched off.
+
 `-gpu` fails, rather than falling back, if the build has no backend or no device
 is present: it is an explicit request, and quietly answering with the other
 implementation would misreport where the results came from.

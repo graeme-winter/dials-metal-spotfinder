@@ -337,7 +337,7 @@ series::Info open_series(series::Series *source, const Options &options) {
     if (Clock::now() > deadline)
       throw std::runtime_error("timed out waiting for " + source->describe());
     if (!announced) {
-      std::fprintf(stderr, "waiting for %s\n", source->describe().c_str());
+      std::fprintf(stderr, "Waiting for %s\n", source->describe().c_str());
       announced = true;
     }
     sleep_for(options.poll_milliseconds);
@@ -350,7 +350,7 @@ series::Info open_series(series::Series *source, const Options &options) {
 // reason would not be visible in either file.
 void reconcile(const expt::Info &experiments, const series::Info &series,
                Options *options) {
-  std::fprintf(stderr, "experiments: %s\n", describe(experiments).c_str());
+  std::fprintf(stderr, "Experiments: %s\n", describe(experiments).c_str());
 
   if (experiments.experiments != 1) {
     throw std::runtime_error("this writes one experiment's spots, and " +
@@ -391,7 +391,7 @@ void reconcile(const expt::Info &experiments, const series::Info &series,
     options->z_offset = experiments.first_image - 1;
     if (options->z_offset != 0) {
       std::fprintf(stderr,
-                   "the scan starts at image %lld, so z starts at %lld\n",
+                   "The scan starts at image %lld, so z starts at %lld\n",
                    static_cast<long long>(experiments.first_image),
                    static_cast<long long>(options->z_offset));
     }
@@ -442,7 +442,7 @@ int main(int argc, char **argv) {
   }
 
   std::fprintf(stderr,
-               "series %s: %llu images of %llu x %llu, from %s, %d thread%s, "
+               "Series %s: %llu images of %llu x %llu, from %s, %d thread%s, "
                "on the %s\n",
                info.name.c_str(), static_cast<unsigned long long>(info.images),
                static_cast<unsigned long long>(info.height),
@@ -451,7 +451,7 @@ int main(int argc, char **argv) {
                options.threads == 1 ? "" : "s", options.gpu ? "GPU" : "CPU");
   std::fprintf(
       stderr,
-      "grouping in %s, %zu to %zu pixels a spot, peak within %.1f of the "
+      "Grouping in %s, %zu to %zu pixels a spot, peak within %.1f of the "
       "centroid\n",
       options.two_d ? "two dimensions" : "three dimensions",
       options.grouping.min_spot_size, options.grouping.max_spot_size,
@@ -615,7 +615,7 @@ int main(int argc, char **argv) {
     if (interrupted != 0 || complete || timed_out)
       stop = true;
     if (timed_out && !complete) {
-      std::fprintf(stderr, "no new images for %d seconds, giving up\n",
+      std::fprintf(stderr, "No new images for %d seconds, giving up\n",
                    options.timeout_seconds);
     }
 
@@ -640,7 +640,7 @@ int main(int argc, char **argv) {
   const dials_spots::Counts &counts = labeller.counts();
 
   std::fprintf(stderr,
-               "thresholded %llu of %llu images in %.1f s (%.1f images/s), "
+               "Thresholded %llu of %llu images in %.1f s (%.1f images/s), "
                "%llu never written, %llu failures\n",
                static_cast<unsigned long long>(read.load()),
                static_cast<unsigned long long>(dispatched.size()), seconds,
@@ -653,17 +653,38 @@ int main(int argc, char **argv) {
                  "dropped\n",
                  static_cast<unsigned long long>(out_of_order));
   }
-  std::fprintf(stderr,
-               "%llu signal pixels over %llu frames grouped into %llu spots: "
-               "%llu too small, %llu too large, %llu peak too far from the "
-               "centroid, %llu kept\n",
+  // dials.find_spots' own summary, wording included, so that a log from this
+  // and a log from that can be read the same way and compared line for line.
+  // The two "Calculated" lines are one pass here rather than two, so their
+  // counts are equal by construction; they are both printed anyway, because a
+  // block that reads differently from the familiar one is the thing this
+  // replaced.
+  const std::uint64_t sized =
+      counts.groups - counts.too_small - counts.too_large;
+
+  std::fprintf(stderr, "Found %llu signal pixels on %llu frames\n",
                static_cast<unsigned long long>(counts.signal_pixels),
-               static_cast<unsigned long long>(grouped),
-               static_cast<unsigned long long>(counts.groups),
+               static_cast<unsigned long long>(grouped));
+  std::fprintf(stderr, "Extracted %llu spots\n",
+               static_cast<unsigned long long>(counts.groups));
+  std::fprintf(stderr, "Removed %llu spots with size < %zu pixels\n",
                static_cast<unsigned long long>(counts.too_small),
+               options.grouping.min_spot_size);
+  std::fprintf(stderr, "Removed %llu spots with size > %zu pixels\n",
                static_cast<unsigned long long>(counts.too_large),
-               static_cast<unsigned long long>(counts.separated),
-               static_cast<unsigned long long>(counts.accepted));
+               options.grouping.max_spot_size);
+  std::fprintf(stderr, "Calculated %llu spot centroids\n",
+               static_cast<unsigned long long>(sized));
+  std::fprintf(stderr, "Calculated %llu spot intensities\n",
+               static_cast<unsigned long long>(sized));
+  // Only when the filter ran: "Filtered 48 of 48" would otherwise read as a
+  // filter that passed everything rather than one that was switched off.
+  if (options.grouping.max_separation > 0.0) {
+    std::fprintf(stderr,
+                 "Filtered %llu of %llu spots by peak-centroid distance\n",
+                 static_cast<unsigned long long>(counts.accepted),
+                 static_cast<unsigned long long>(sized));
+  }
 
   refl::Options writing;
   writing.identifier = experiments.identifier;
@@ -678,14 +699,14 @@ int main(int argc, char **argv) {
 
   if (labeller.spots().empty()) {
     std::fprintf(stderr,
-                 "no reflections found; %s is a well formed table with no rows "
+                 "No reflections found; %s is a well formed table with no rows "
                  "in it, which dials.index will refuse\n",
                  options.output.c_str());
   } else {
     std::error_code ignored;
     const std::uintmax_t bytes =
         std::filesystem::file_size(options.output, ignored);
-    std::fprintf(stderr, "wrote %zu reflections to %s (%.1f MB%s)\n",
+    std::fprintf(stderr, "Wrote %zu reflections to %s (%.1f MB%s)\n",
                  labeller.spots().size(), options.output.c_str(),
                  static_cast<double>(bytes) / 1e6,
                  options.shoeboxes ? ", most of it shoeboxes" : "");

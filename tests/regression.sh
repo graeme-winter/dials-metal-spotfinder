@@ -110,6 +110,34 @@ else
     fail "the experiment identifier did not reach the table"
 fi
 
+echo "== the summary adds up"
+# The block is dials.find_spots' wording, and it is what anyone reads to know
+# what happened, so the arithmetic in it is checked rather than trusted:
+# extracted, less the two size rejections, is what reached the centroids, and
+# the peak-centroid filter reports that as its own total.
+summary() { grep -E "^$1" "${WORK}/find.err" | head -1; }
+extracted=$(summary "Extracted" | awk '{print $2}')
+small=$(summary "Removed .* size <" | awk '{print $2}')
+large=$(summary "Removed .* size >" | awk '{print $2}')
+centroids=$(summary "Calculated .* centroids" | awk '{print $2}')
+filtered=$(summary "Filtered" | awk '{print $4}')
+if [ -z "${extracted}" ] || [ -z "${filtered}" ]; then
+    fail "the summary is missing lines"
+    cat "${WORK}/find.err"
+elif [ "$((extracted - small - large))" != "${centroids}" ]; then
+    fail "extracted ${extracted} less ${small} and ${large} is not ${centroids}"
+elif [ "${filtered}" != "${centroids}" ]; then
+    fail "the filter reports ${filtered} spots and ${centroids} had centroids"
+elif [ "${filtered}" != "$(python3 -c "
+import sys
+sys.path.insert(0, '${HERE}')
+from check_refl import Table
+print(Table('${WORK}/strong.refl').rows)")" ]; then
+    fail "the summary says ${filtered} spots and the table has a different number"
+else
+    pass "the summary accounts for every spot: ${extracted} extracted, ${centroids} kept"
+fi
+
 echo "== the grouping is three dimensional"
 # Each reflection spans three frames, so grouping per frame must give exactly
 # three times as many spots. This is the check that would catch the 3D grouping
