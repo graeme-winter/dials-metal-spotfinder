@@ -1,0 +1,8 @@
+{
+  "name": "dials-metal-spotfinder",
+  "version-string": "0.1.0",
+  "description": "The DIALS extended dispersion spot finder on a GPU, from NXmx to a reflection table",
+  "dependencies": [
+    "hdf5"
+  ]
+}
