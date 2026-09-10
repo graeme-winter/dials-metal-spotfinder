@@ -340,6 +340,21 @@ Workspace &workspace() {
 
 const char *backend() { return "Metal"; }
 
+namespace internal {
+
+// Tile for both, measured. Per frame at 4362 x 4148, 20 repeats, stage2 tile
+// throughout: stage0 tile 4.09 ms against direct 4.86, so 16% for the table.
+// The workstation CUDA card prefers direct for stage0 by 2%, which is why this
+// is a question for the backend and not a constant in dext_gpu.cc.
+//
+// Both are still overridable with SPOTFINDER_GPU_STAGE0 and _STAGE2, and both
+// losing variants are kept: each is a second, independent way of summing the
+// same window, and ctest -R dext_gpu runs all four against the CPU.
+Window default_stage0_window() { return Window::Tile; }
+Window default_stage2_window() { return Window::Tile; }
+
+} // namespace internal
+
 bool available() { return Device::instance().usable(); }
 
 std::size_t memory_free() {

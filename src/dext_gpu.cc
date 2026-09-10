@@ -17,9 +17,25 @@
 namespace gpu {
 namespace {
 
-// Defaults: direct for stage0 and tile for stage2, which is what CUDA has
-// always done and what has been measured fastest on Apple silicon. A backend
-// that wants different defaults should say so with a measurement.
+// stage2 is tile on both devices and by a wide margin: per-pixel load traffic
+// costs more than the barrier and the threadgroup memory save.
+//
+// stage0 is where they disagree, so it is not a constant. Measured per frame at
+// 4362 x 4148, stage2 tile throughout:
+//
+//     stage0      Apple silicon    workstation CUDA
+//     direct           4.86 ms         12.10 ms
+//     tile             4.09 ms         12.37 ms
+//
+// 16% on Metal for tile, 2% on CUDA for direct. The Metal figure was 3.6% when
+// it was first measured and grew when the benchmark stopped timing a staging
+// copy the tool does not make; the CUDA column has not been re-measured since
+// that fix and is worth re-running before it is trusted at 2%.
+//
+// So the default is asked of the backend rather than fixed here. This file
+// still owns the policy -- the environment overrides the default, an
+// unrecognised value warns and is ignored -- because that is the part that
+// would otherwise end up written twice and spelled two ways.
 std::atomic<Window> chosen0{Window::Direct};
 std::atomic<Window> chosen2{Window::Tile};
 std::once_flag chosen_once;
@@ -59,6 +75,8 @@ void resolve_one(const char *name_suffix, std::atomic<Window> &into) {
 }
 
 void resolve_windows() {
+  chosen0.store(internal::default_stage0_window(), std::memory_order_relaxed);
+  chosen2.store(internal::default_stage2_window(), std::memory_order_relaxed);
   resolve_one("STAGE0", chosen0);
   resolve_one("STAGE2", chosen2);
 }

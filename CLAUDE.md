@@ -188,7 +188,13 @@ could.
 * **Both backends have all four window kernels**, chosen at run time by
   `SPOTFINDER_GPU_STAGE0` and `SPOTFINDER_GPU_STAGE2`, and the two devices do not
   agree about `stage0` -- which is why it is a run-time choice and not a decision
-  in the source. The table is in the README. Keep the losing variants: each is a
+  in the source. The table is in the README. The *default* for each stage is
+  asked of the backend, through `internal::default_stage0_window()`, because the
+  answer is a property of the device: `tile` for both stages on Metal, `direct`
+  then `tile` on CUDA. Everything else about the choice -- the environment
+  override, the warning on a value that is neither, the announcing -- stays in
+  `dext_gpu.cc`, so only the measured preference is per backend and not the
+  policy. Keep the losing variants: each is a
   second, independent way of summing the same window, and the device test running
   all four combinations against the CPU is a real cross-check on the tiles' index
   arithmetic that nothing else provides.

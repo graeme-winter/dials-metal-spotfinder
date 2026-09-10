@@ -410,26 +410,29 @@ itself, 49 loads a pixel at `stage0` and 121 at `stage2`, with no barrier and
 all 1024 threads working throughout.
 
 On paper the table loses. In fact it wins comfortably at `stage2`: per-pixel load
-traffic costs more than the barrier saves. Measured per frame at 4362 x 4148:
+traffic costs more than the barrier saves. Measured per frame at 4362 x 4148,
+20 repeats:
 
-| stage0 | stage2 | M4 | workstation CUDA |
+| stage0 | stage2 | Apple silicon | workstation CUDA |
 | --- | --- | --- | --- |
-| `direct` | `tile` | 5.32 ms | **12.10 ms** |
-| `tile` | `tile` | **5.13 ms** | 12.37 ms |
-| `direct` | `direct` | 9.34 ms | 16.06 ms |
-| `tile` | `direct` | -- | 15.01 ms |
+| `tile` | `tile` | **4.09 ms** | 12.37 ms |
+| `direct` | `tile` | 4.86 ms | **12.10 ms** |
+| `tile` | `direct` | 8.13 ms | 15.01 ms |
+| `direct` | `direct` | 9.24 ms | 16.06 ms |
 
-Those numbers were taken before the benchmark stopped timing a staging copy the
-tool does not make -- the single-frame paths passed an ordinary buffer where
-`find()` wants one from `gpu::host_alloc` -- so each is inflated by around half
-a millisecond. The copy was the same for every variant, so the ranking stands
-and the absolute figures do not; re-measure rather than comparing across that
-fix.
+`stage2`'s tile wins on both and is not in doubt: 25% on CUDA and better than
+50% on Metal. `stage0` is where the two devices disagree -- 16% for `tile` on
+Apple silicon, 2% for `direct` on the CUDA card -- which is why the default for
+that stage is asked of the backend rather than fixed, and why both variants are
+kept.
 
-`stage2`'s tile wins on both, and by a lot. `stage0`'s helps on Apple silicon
-and is slightly worse on the CUDA card, so the shipped defaults -- `direct` for
-`stage0`, `tile` for `stage2` -- are right on both as it happens. Measure rather
-than trusting the table:
+Read the two columns apart rather than against each other. The Metal column is
+from a run after the benchmark stopped timing a staging copy the tool does not
+make; the CUDA column is from before, where the same fix means something
+different -- on CUDA the copy is real, and it was copying ordinary rather than
+page-locked memory. Its 2% is the number most in need of a re-run.
+
+Measure rather than trusting the table:
 
 ```sh
 build/bench_dext_gpu                 # 4362 x 4148, 20 repeats, one worker

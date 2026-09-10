@@ -545,6 +545,21 @@ Workspace &workspace() {
 
 const char *backend() { return "CUDA"; }
 
+namespace internal {
+
+// Direct for stage0, tile for stage2. Measured per frame at 4362 x 4148 on one
+// workstation card: stage0 direct 12.10 ms against tile 12.37, a 2% difference
+// that is close enough to the noise that another card could rank them the other
+// way -- and this pair has not been re-measured since the benchmark stopped
+// timing a staging copy, which on CUDA is a real copy of ordinary rather than
+// pinned memory. Worth re-running bench_dext_gpu before trusting the 2%.
+//
+// stage2's tile wins by 25% here and is not in doubt.
+Window default_stage0_window() { return Window::Direct; }
+Window default_stage2_window() { return Window::Tile; }
+
+} // namespace internal
+
 bool available() {
   int devices = 0;
   return cudaGetDeviceCount(&devices) == cudaSuccess && devices > 0;
