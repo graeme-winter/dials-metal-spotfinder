@@ -419,6 +419,13 @@ traffic costs more than the barrier saves. Measured per frame at 4362 x 4148:
 | `direct` | `direct` | 9.34 ms | 16.06 ms |
 | `tile` | `direct` | -- | 15.01 ms |
 
+Those numbers were taken before the benchmark stopped timing a staging copy the
+tool does not make -- the single-frame paths passed an ordinary buffer where
+`find()` wants one from `gpu::host_alloc` -- so each is inflated by around half
+a millisecond. The copy was the same for every variant, so the ranking stands
+and the absolute figures do not; re-measure rather than comparing across that
+fix.
+
 `stage2`'s tile wins on both, and by a lot. `stage0`'s helps on Apple silicon
 and is slightly worse on the CUDA card, so the shipped defaults -- `direct` for
 `stage0`, `tile` for `stage2` -- are right on both as it happens. Measure rather
@@ -430,8 +437,11 @@ build/bench_dext_gpu 4362 4148 20 16 # and aggregate across 16 workers
 ```
 
 It times all four combinations, reports the CPU for scale, refuses to draw a
-conclusion if two variants disagree about what they found, and reports aggregate
-throughput as well as single-frame latency -- which is a different question: a
+conclusion if two variants disagree about what they found, says how dense the
+frame it measured was -- the planted frame carries about a hundred times more
+signal pixels than diffraction does, and two lines of the per-stage profile are
+proportional to that count -- and reports aggregate throughput as well as
+single-frame latency -- which is a different question: a
 configuration doing more load traffic per pixel loses more as workers pile up,
 because they compete for the same memory.
 

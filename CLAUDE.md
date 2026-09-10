@@ -200,6 +200,21 @@ could.
   and does not change the schedule. Metal has no per-dispatch timestamp without
   `MTLCounterSampleBuffer`, so it submits each stage in its own command buffer and
   gives up whatever was overlapping -- there, read the shares and not the sum.
+* **A benchmark must hand `find()` the memory the tool hands it.** The
+  single-frame and profiling paths in `tests/bench_dext_gpu.cc` passed an
+  ordinary `std::vector`, so `Registry::lookup` missed and every frame paid a
+  staging copy -- 0.45 ms of a 4.55 ms Metal frame, reported as if the tool
+  spent it. `time_threaded` had always used `gpu::host_alloc` and said in its
+  comment why; the other two had not. All of them go through `Shared` now.
+  Anything recorded before that fix is inflated by the copy.
+* **The planted frame is about a hundred times denser than diffraction.**
+  `synthetic::make_frame` gives 126,002 signal pixels on 18.1 Mpixel; a real
+  sweep of a 10 Mpixel detector gave 194150 connected components over 1800
+  frames, so of the order of a thousand signal pixels a frame. The device stages
+  hardly care, since they look at every pixel either way, but reading the packed
+  list back and ordering it are proportional to the count -- 14% of a benchmark
+  frame and a fraction of a per cent of a real one. The benchmark prints the
+  density so the reader can weight those two lines.
 * **GPU time and host wall clock are reported apart and never added.** An earlier
   benchmark printed a GPU sum next to `find()`'s wall clock as though they were
   comparable, which made a frame look 3 ms slower than its stages -- and the

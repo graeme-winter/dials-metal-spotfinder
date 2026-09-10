@@ -97,18 +97,56 @@ bool identical(const std::vector<SignalPixel> &a,
   return true;
 }
 
+// The frame in the memory the tool hands find(), which is memory the device can
+// read without a copy: gpu::host_alloc, as src/find_spots.cc's FrameBuffer
+// does. Ordinary memory works and is copied into a staging buffer once per
+// frame instead -- correct, but half a millisecond of a four millisecond frame
+// that production does not spend, which is exactly the sort of thing a
+// benchmark must not invent. time_threaded() always did this; the single-frame
+// paths did not, and reported a copy nobody pays.
+class Shared {
+public:
+  explicit Shared(const synthetic::Frame &frame)
+      : fallback_(frame.pixels.data()),
+        bytes_(frame.pixels.size() * sizeof(std::uint16_t)) {
+    buffer_ = gpu::host_alloc(bytes_);
+    if (buffer_ != nullptr)
+      std::memcpy(buffer_, frame.pixels.data(), bytes_);
+  }
+
+  ~Shared() {
+    if (buffer_ != nullptr)
+      gpu::host_free(buffer_);
+  }
+
+  Shared(const Shared &) = delete;
+  Shared &operator=(const Shared &) = delete;
+
+  const std::uint16_t *pixels() const {
+    return buffer_ != nullptr ? static_cast<const std::uint16_t *>(buffer_)
+                              : fallback_;
+  }
+
+  bool shared() const { return buffer_ != nullptr; }
+
+private:
+  const std::uint16_t *fallback_;
+  std::size_t bytes_;
+  void *buffer_ = nullptr;
+};
+
 // One configuration, timed. Returns the median frame time in milliseconds.
 Timing time_windows(gpu::Window window0, gpu::Window window2,
-                    const synthetic::Frame &frame, int repeats,
-                    std::vector<SignalPixel> *out) {
+                    const synthetic::Frame &frame, const std::uint16_t *pixels,
+                    int repeats, std::vector<SignalPixel> *out) {
   gpu::stage0_window(window0);
   gpu::stage2_window(window2);
   std::vector<SignalPixel> signal;
 
   // One untimed frame first: it pays for the pipelines, the buffers and the
   // first touch of the shared allocation, none of which a steady stream does.
-  if (gpu::find<std::uint16_t>(frame.pixels.data(), signal, frame.height,
-                               frame.width) != 0) {
+  if (gpu::find<std::uint16_t>(pixels, signal, frame.height, frame.width) !=
+      0) {
     std::printf("  find() failed\n");
     return Timing();
   }
@@ -117,8 +155,8 @@ Timing time_windows(gpu::Window window0, gpu::Window window2,
   samples.reserve(static_cast<std::size_t>(repeats));
   for (int n = 0; n < repeats; n++) {
     const Clock::time_point started = Clock::now();
-    const int status = gpu::find<std::uint16_t>(frame.pixels.data(), signal,
-                                                frame.height, frame.width);
+    const int status =
+        gpu::find<std::uint16_t>(pixels, signal, frame.height, frame.width);
     const Clock::time_point finished = Clock::now();
     if (status != 0) {
       std::printf("  find() returned %d on repeat %d\n", status, n);
@@ -202,7 +240,8 @@ double time_threaded(gpu::Window window0, gpu::Window window2,
 // overlapping, so the sum here is expected to exceed the unprofiled frame time.
 // That gap is information too, and it is printed rather than hidden.
 void profile(gpu::Window window0, gpu::Window window2,
-             const synthetic::Frame &frame, int repeats, double unprofiled) {
+             const synthetic::Frame &frame, const std::uint16_t *pixels,
+             int repeats, double unprofiled) {
   gpu::stage0_window(window0);
   gpu::stage2_window(window2);
   gpu::profile_stages(true);
@@ -210,8 +249,8 @@ void profile(gpu::Window window0, gpu::Window window2,
   std::vector<SignalPixel> signal;
   std::vector<double> up, zero, one, two, copied, sorted;
   for (int n = 0; n < repeats; n++) {
-    if (gpu::find<std::uint16_t>(frame.pixels.data(), signal, frame.height,
-                                 frame.width) != 0) {
+    if (gpu::find<std::uint16_t>(pixels, signal, frame.height, frame.width) !=
+        0) {
       gpu::profile_stages(false);
       std::printf("  profiling: find() failed\n");
       return;
@@ -340,6 +379,15 @@ int main(int argc, char **argv) {
   const synthetic::Frame frame =
       synthetic::make_frame("bench", height, width, 11, 18.0, true);
 
+  // One shared allocation for every timed path below, so that all of them
+  // measure the frame the tool actually gives the device.
+  const Shared shared(frame);
+  if (!shared.shared()) {
+    std::printf("\nhost_alloc failed, so the frame is in ordinary memory and "
+                "every frame below pays for a staging copy that the tool does "
+                "not. Read the timings with that in mind.\n");
+  }
+
   const gpu::Window windows[2] = {gpu::Window::Direct, gpu::Window::Tile};
 
   // Every combination, and the results of every combination compared: a faster
@@ -352,8 +400,8 @@ int main(int argc, char **argv) {
   for (int a = 0; a < 2; a++) {
     for (int b = 0; b < 2; b++) {
       std::vector<SignalPixel> signal;
-      timings[a][b] =
-          time_windows(windows[a], windows[b], frame, repeats, &signal);
+      timings[a][b] = time_windows(windows[a], windows[b], frame,
+                                   shared.pixels(), repeats, &signal);
       if (reference.empty())
         reference = signal;
       else if (!identical(reference, signal))
@@ -441,9 +489,23 @@ int main(int argc, char **argv) {
   }
   std::printf("\n%zu signal pixels, and every implementation agrees.\n",
               reference.size());
+  // Which matters for reading the profile below. Two of its lines -- copying
+  // the packed list back and ordering it -- are proportional to this count,
+  // and the planted frame is far denser than diffraction: a real sweep of this
+  // detector reported 194150 connected components over 1800 frames, which is
+  // of the order of a thousand signal pixels a frame, not a hundred thousand.
+  // The device stages barely notice, since they look at every pixel either
+  // way; the host lines are inflated by whatever that ratio is.
+  std::printf("  that is %.3f%% of the frame. Real diffraction runs nearer "
+              "0.01%%, so the two host\n  lines in the profile below are "
+              "weighted about %.0fx too heavily for a real frame.\n",
+              100.0 * static_cast<double>(reference.size()) /
+                  static_cast<double>(pixels),
+              static_cast<double>(reference.size()) /
+                  (0.0001 * static_cast<double>(pixels)));
 
-  profile(windows[best_a], windows[best_b], frame, repeats > 6 ? 6 : repeats,
-          timings[best_a][best_b].median);
+  profile(windows[best_a], windows[best_b], frame, shared.pixels(),
+          repeats > 6 ? 6 : repeats, timings[best_a][best_b].median);
 
   std::printf("\nfastest here: stage0 %s, stage2 %s at %.2f ms\n",
               gpu::name(windows[best_a]), gpu::name(windows[best_b]),
