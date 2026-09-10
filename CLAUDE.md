@@ -232,6 +232,19 @@ could.
   script checks, because it is the property that makes the chunking safe.
 * **A gap in the frame numbering closes everything open**, rather than being an
   error.
+* **The grouping is not the expensive stage, and measure before believing
+  otherwise.** It looks like it should be: it is the one stage that cannot be
+  spread over threads, and its cost grows with how many components are open
+  rather than with how many pixels arrived. But a real sweep produces something
+  like 194150 connected components in total -- 54 a frame over 3600, 324 over
+  600 -- which is one to six thousand signal pixels a frame, and
+  `build/bench_dials_spots` measures 0.05 to 0.6 ms there against a threshold
+  taking 5 ms a frame on a GPU. I once reasoned my way from an invented density
+  of 145,000 signal pixels a frame to "the grouping caps you at 30 frames a
+  second", wrote a whole accumulator rewrite for it, and measured 2.2x on a
+  frame no instrument produces and nothing at all on one it does. The density
+  was derivable from a `dials.find_spots` summary that was already on the
+  screen. The benchmark exists so the next person starts from the number.
 * **z is an array index, not an image number.** The array index of image *n* is
   *n* - 1, an NXmx series numbers its frames from zero, and a sliced import
   starts higher -- which is why `-e` sets `--z-offset` from the scan's

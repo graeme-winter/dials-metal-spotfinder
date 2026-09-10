@@ -407,6 +407,14 @@ if(SPOTFINDER_TESTS)
         PRIVATE spotfinder_dials_spots spotfinder_warnings)
     add_test(NAME dials_spots COMMAND test_dials_spots)
 
+    # Not a ctest: it is a measurement to read, not a pass or a fail. It is
+    # here because the grouping looks like the expensive stage -- it is the one
+    # that cannot be spread over threads -- and at the density a real frame has
+    # it is a tenth of a per cent of one. The numbers are in its header.
+    add_executable(bench_dials_spots tests/bench_dials_spots.cc)
+    target_link_libraries(bench_dials_spots
+        PRIVATE spotfinder_dials_spots spotfinder_warnings)
+
     add_executable(test_refl tests/test_refl.cc)
     target_link_libraries(test_refl PRIVATE spotfinder_refl spotfinder_warnings)
     add_test(NAME refl COMMAND test_refl)
